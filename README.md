@@ -155,11 +155,11 @@ Stop the server first (Ctrl+C). Only one program can use the tag's USB port at a
 
 ### C. Run
 
-1. Get a Gemini API key at **aistudio.google.com** (Get API key). In the Terminal that will run the server:
+1. Get a Gemini API key at **aistudio.google.com** (Get API key). Put it in a file named `.env` in the repo root (it's gitignored, never commit it):
    ```bash
-   export GEMINI_API_KEY="paste-your-key-here"
+   echo 'GEMINI_API_KEY=paste-your-key-here' > .env
    ```
-   (Windows PowerShell: `$env:GEMINI_API_KEY="paste-your-key-here"`)
+   `server.py` loads `.env` on start. An exported `GEMINI_API_KEY` environment variable also works (Windows PowerShell: `$env:GEMINI_API_KEY="..."`).
 2. Start the server (with `.venv` activated):
    ```bash
    uvicorn server:app --host 0.0.0.0 --port 8000
@@ -212,7 +212,7 @@ Rehearsal without spending Gemini calls: start the server with `BULLHORN_FAKE_GE
 
 **Map imagery:** Esri World Imagery raster tiles (`server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer`). Attribution: Esri, Maxar, Earthstar Geographics, and the GIS User Community. Shown on the map.
 
-**Services/tools:** Google Gemini API (Gemini Flash; `gemini-3.8-flash` with fallbacks to `gemini-flash-latest` and `gemini-2.5-flash`), Cloudflare quick tunnels (`cloudflared`), Meshtastic firmware on SenseCAP T1000-E, Arduino IDE / Arduino core.
+**Services/tools:** Google Gemini API (Gemini Flash; `gemini-3.6-flash` with fallback to `gemini-3.8-flash`), Cloudflare quick tunnels (`cloudflared`), Meshtastic firmware on SenseCAP T1000-E, Arduino IDE / Arduino core.
 
 **Vendor sample code:** `v2smartcar-lesson1/` is OSOYOO's Lesson 1 smart-car sketch, kept for wiring reference only. `rover/rover.ino` is our own code.
 

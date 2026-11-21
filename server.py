@@ -77,9 +77,8 @@ GEMINI_MODELS = [
     m
     for m in [
         os.environ.get("GEMINI_MODEL"),
-        "gemini-3.8-flash",
-        "gemini-flash-latest",
-        "gemini-2.5-flash",
+        "gemini-3.6-flash",   # production Flash, ~7 s for a triage photo in testing
+        "gemini-3.8-flash",   # newest Flash; was returning 503 "high demand" during the event
     ]
     if m
 ]
@@ -98,6 +97,23 @@ Assess the visible skin/wound area and return ONLY this JSON:
 Rules: Open wounds with larvae or maggot-like objects = HIGH. Open wounds without larvae = MEDIUM. No visible wound = LOW. This is triage only, never a diagnosis. If the image is unclear, say so and set confidence low."""
 
 BASE_DIR = Path(__file__).resolve().parent
+
+
+def _load_dotenv() -> None:
+    """Load KEY=VALUE lines from .env (gitignored) so secrets never live in code."""
+    env_file = BASE_DIR / ".env"
+    if not env_file.exists():
+        return
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+_load_dotenv()
+
 DIST_DIR = BASE_DIR / "frontend" / "dist"
 CAPTURE_DIR = BASE_DIR / "captures"
 CAPTURE_DIR.mkdir(exist_ok=True)
@@ -450,7 +466,7 @@ def call_gemini(image: bytes) -> dict[str, Any]:
     from google import genai
     from google.genai import types
 
-    client = genai.Client(api_key=key)
+    client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=25_000))  # ms per model attempt
     last_exc: Optional[Exception] = None
     for model in GEMINI_MODELS:
         try:
