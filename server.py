@@ -34,7 +34,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 # If left as placeholders, the server auto-detects:
 #   COW_ID  -> any node whose name is COW_NAME ("Cow1")
 #   BASE_ID -> the tag that is plugged into this laptop
-COW_ID = "!COW_ID"
+COW_ID = "!ae340949"    # tag #1 (Cow1)
 BASE_ID = "!0cbf7667"   # tag #2 (Base / Barn Station)
 COW_NAME = "Cow1"
 
