@@ -130,7 +130,8 @@ Apple uses almost no shadow; separation comes from surface color and blur.
 
 ## 10. Tailwind mapping (this repo)
 
-Tokens live in `frontend/tailwind.config.js` and `frontend/src/index.css`:
-`ink` (text), `mute` (secondary), `accent` (#0071e3 / #2997ff), `alert` (#ff453a),
-`.glass` utility for frosted panels, radii `rounded-panel` (18px), `rounded-sheet` (28px),
-`rounded-pill` (980px).
+Tailwind v4: tokens live in the `@theme` block of `frontend/src/index.css`:
+`text-ink` / `text-mute` / `text-faint`, `bg-fill`, `bg-accent`, `text-link` (#2997ff),
+`text-alert` (#ff453a), `text-warn`, `text-ok`; `.glass` / `.glass-strong` for frosted panels;
+radii `rounded-panel` (18px), `rounded-sheet` (28px), `rounded-pill` (980px);
+easings `ease-apple`, `ease-enter`. Framer Motion spring lives in `components/ui.tsx`.
