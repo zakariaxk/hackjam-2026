@@ -43,13 +43,14 @@ export interface Alert {
 
 export interface TriageResult {
   parsed: boolean;
-  risk?: "LOW" | "MEDIUM" | "HIGH";
-  confidence?: number;
+  risk?: "LOW" | "MEDIUM" | "HIGH" | null;
+  confidence?: number | null;
   findings?: string;
   recommended_action?: string;
   fdacs_report?: string;
   raw: string;
   model?: string;
+  demo?: boolean;
 }
 
 export interface Flow {

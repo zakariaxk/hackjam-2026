@@ -212,7 +212,7 @@ export default function Dashboard() {
 
       <AnimatePresence>
         {resultOpen && status.result && (
-          <ResultSheet result={status.result} imageVersion={status.image_version} onClose={() => setResultOpen(false)} />
+          <ResultSheet result={status.result} imageVersion={status.image_version} scannedAt={status.flow.scanned_at} onClose={() => setResultOpen(false)} />
         )}
       </AnimatePresence>
     </div>

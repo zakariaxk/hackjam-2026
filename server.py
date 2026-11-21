@@ -92,16 +92,14 @@ GEMINI_PROMPT = """You are a livestock health triage assistant supporting Florid
 
 Assess the visible skin/wound area and return ONLY this JSON:
 {
-  "risk": "LOW" | "MEDIUM" | "HIGH",
-  "confidence": 0-100,
+  "risk": "LOW" | "MEDIUM" | "HIGH" | null,
+  "confidence": an integer from 0 to 100 for confidence in the image-based triage rating, or null if not assessable,
   "findings": "1-2 sentences describing what is visible (open wound, larvae/maggot-like objects, blood, discharge, swelling, fly activity, or nothing abnormal)",
-  "recommended_action": "1 sentence: e.g. isolate animal, contact veterinarian, collect larvae sample, continue monitoring",
+  "recommended_action": "1 sentence for the rancher. Refer suspected cases to a veterinarian and defer sampling and treatment to them.",
   "fdacs_report": "A 3-4 sentence draft report to the Florida Department of Agriculture and Consumer Services (FDACS) Division of Animal Industry describing the suspected case, animal ID 'Cow1', and observed signs, written for a veterinarian to confirm."
 }
 
-Rules: Open wounds with larvae or maggot-like objects = HIGH. Open wounds without larvae = MEDIUM. No visible wound = LOW. This is triage only, never a diagnosis. If the image is unclear, say so and set confidence low.
-
-Demo context: this is a hackathon demonstration, so the rover camera is photographing printed photos (or screens) of cattle wounds placed on a model cow. Assess the animal and wound shown in the picture exactly as if it were the live animal in the pasture. Do not mention that the image is a printout, a photo of a photo, paper, or a screen, and do not lower your confidence because of it; only lower confidence if the wound itself is hard to see (blurry, too far, glare covering it)."""
+Rules: Open wounds with larvae or maggot-like objects = HIGH. Open wounds without larvae = MEDIUM. No visible wound in a clear image = LOW. If the image cannot be assessed, use null for risk and confidence. This is triage only, never a diagnosis. Describe image limitations, including visible signs that the image is a demo prop, printout, or screen. Do not claim to have examined a live animal."""
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -456,20 +454,28 @@ def parse_result(text: str) -> dict[str, Any]:
         data = json.loads(match.group(0) if match else cleaned)
     except Exception:  # noqa: BLE001
         return {"parsed": False, "raw": text}
+    if not isinstance(data, dict):
+        return {"parsed": False, "raw": text}
     risk = str(data.get("risk", "")).upper().strip()
     if risk not in ("LOW", "MEDIUM", "HIGH"):
-        risk = "MEDIUM" if "MED" in risk else ("HIGH" if "HIGH" in risk else "LOW")
+        risk = None
+    score = data.get("confidence")
     try:
-        confidence = max(0, min(100, int(float(data.get("confidence", 0)))))
-    except Exception:  # noqa: BLE001
-        confidence = 0
+        score = float(score) if not isinstance(score, bool) else None
+    except (TypeError, ValueError, OverflowError):
+        score = None
+    confidence = int(score) if risk and score is not None and 0 <= score <= 100 else None
+    def field(key: str) -> str:
+        value = data.get(key)
+        return value.strip() if isinstance(value, str) else ""
+
     return {
-        "parsed": True,
+        "parsed": bool(risk or field("findings")),
         "risk": risk,
         "confidence": confidence,
-        "findings": str(data.get("findings", "")),
-        "recommended_action": str(data.get("recommended_action", "")),
-        "fdacs_report": str(data.get("fdacs_report", "")),
+        "findings": field("findings"),
+        "recommended_action": field("recommended_action"),
+        "fdacs_report": field("fdacs_report") if risk else "",
         "raw": text,
     }
 
@@ -478,7 +484,7 @@ FAKE_RESULT = {
     "risk": "HIGH",
     "confidence": 82,
     "findings": "UI TEST ONLY (BULLHORN_FAKE_GEMINI=1): open red lesion with several small white larva-like objects visible.",
-    "recommended_action": "Isolate the animal, contact a veterinarian, and collect a larvae sample.",
+    "recommended_action": "Contact a veterinarian for an examination and follow their instructions.",
     "fdacs_report": "UI TEST ONLY. This is a canned response used to rehearse the dashboard without calling Gemini.",
 }
 
@@ -488,6 +494,7 @@ def call_gemini(image: bytes) -> dict[str, Any]:
         time.sleep(2.5)  # rehearsal mode: canned result, clearly labeled, no API call
         result = parse_result(json.dumps(FAKE_RESULT))
         result["model"] = "canned test response (BULLHORN_FAKE_GEMINI=1)"
+        result["demo"] = True
         return result
     key = os.environ.get("GEMINI_API_KEY")
     if not key:

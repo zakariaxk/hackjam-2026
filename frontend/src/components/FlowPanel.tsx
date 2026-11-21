@@ -17,7 +17,7 @@ interface Props {
   onOpenResult: () => void;
 }
 
-const STEPS = ["Detected", "Located", "Dispatched", "Scanned", "Reported"] as const;
+const STEPS = ["Detected", "Located", "Dispatched", "Scanned", "Triaged"] as const;
 
 export default function FlowPanel({ status, now, busy, onLocate, onDispatch, onScan, onReset, onOpenResult }: Props) {
   const { alert, flow, result } = status;
@@ -26,21 +26,12 @@ export default function FlowPanel({ status, now, busy, onLocate, onDispatch, onS
     !!flow.located_at,
     !!flow.dispatched_at,
     !!flow.scanned_at || status.has_image,
-    !!result?.parsed,
+    !!(result?.parsed && result.risk),
   ];
   const current = done.findIndex((d) => !d);
 
-  const next: "locate" | "dispatch" | "scan" | "report" | null = !alert
-    ? null
-    : !done[1]
-      ? "locate"
-      : !done[2]
-        ? "dispatch"
-        : !done[3]
-          ? "scan"
-          : result
-            ? "report"
-            : null;
+  const next = result ? "review" : !alert ? null : !done[1] && status.radio_online ? "locate"
+    : !done[2] ? "dispatch" : !done[3] ? "scan" : null;
 
   const roverArrived = flow.dispatched_at ? now - flow.dispatched_at >= ROVER_TRIP_S : false;
   const waitingForCam = status.scan_pending;
@@ -146,9 +137,9 @@ export default function FlowPanel({ status, now, busy, onLocate, onDispatch, onS
 
       {/* ---------- Actions ---------- */}
       <div className="mt-2 grid grid-cols-1 gap-2">
-        {next === "report" ? (
+        {next === "review" ? (
           <Button variant="primary" full onClick={onOpenResult} icon={<IconChevron size={16} />}>
-            View triage report
+            Review triage result
           </Button>
         ) : null}
         <Button
