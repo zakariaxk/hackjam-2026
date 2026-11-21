@@ -70,7 +70,13 @@ export default function FlowPanel({ status, now, busy, onLocate, onDispatch, onS
               )}
             </div>
             <h2 className="mt-2 text-[28px] font-semibold leading-[1.1] tracking-[0.004em]">Cow1</h2>
-            <p className="mt-1 text-[15px] text-ink/90">Abnormal behavior · head shaking</p>
+            <p className="mt-1 text-[15px] text-ink/90">
+              {alert.trigger === "motion" ? "Head shaking detected" : "Abnormal behavior"}
+              <span className="text-mute">
+                {" · "}
+                {alert.trigger === "motion" ? "tag motion sensor" : alert.trigger === "button" ? "tag button" : "manual"}
+              </span>
+            </p>
             <p className="mt-1 text-[13px] text-mute tnum">
               {formatTime(alert.time)} · via {alert.source === "lora" ? "LoRa mesh" : "manual backup trigger"}
             </p>
@@ -193,9 +199,9 @@ export default function FlowPanel({ status, now, busy, onLocate, onDispatch, onS
           <ul className="mt-2 space-y-1.5">
             {status.alert_log.slice(0, 4).map((a) => (
               <li key={a.id} className="flex items-center justify-between text-[12.5px] tnum">
-                <span className="text-ink/90">{a.name} · abnormal behavior</span>
+                <span className="text-ink/90">{a.name} · {a.trigger === "motion" ? "head shaking" : "abnormal behavior"}</span>
                 <span className="text-faint">
-                  {formatTime(a.time)} · {a.source === "lora" ? "LoRa" : "Manual"}
+                  {formatTime(a.time)} · {a.source === "lora" ? (a.trigger === "motion" ? "Motion" : "Button") : "Manual"}
                 </span>
               </li>
             ))}

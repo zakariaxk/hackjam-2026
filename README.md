@@ -36,14 +36,14 @@ Built at **HackJam '26 (USF SHPE)**. Tracks: Best Overall, Home Turf, Off the Gr
  └──────────────────────┘
 ```
 
-**Demo flow:** double-press the Cow1 tag → Cow1 turns red, map flies to it, alert card slides in → **Locate** (tag beeps over LoRa) → **Dispatch rover** (map animation + press the Uno's reset so the real rover drives to the cow) → **Scan wound** (rover phone captures, Gemini triages) → result sheet with risk, confidence, findings, action and a copyable FDACS draft → **Reset**.
+**Demo flow:** shake the cardboard cow (the Cow1 tag's accelerometer detects head shaking and broadcasts an alert over LoRa; the Base tag beeps) → Cow1 turns red, map flies to it, alert card slides in → **Locate** (tag beeps over LoRa) → **Dispatch rover** (map animation + press the Uno's reset so the real rover drives to the cow) → **Scan wound** (rover phone captures, Gemini triages) → result sheet with risk, confidence, findings, action and a copyable FDACS draft → **Reset**.
 
 ### Honesty notes (we say these out loud to judges)
 
 - **The ~40-cow herd is simulated.** It's a client-side grazing model, labeled "Simulated" in the legend, the herd panel and on hover, with a toggle to hide it. The optional outbreak scenario only flags simulated cows.
 - **The rover dispatch animation on the map is a visualization.** The real rover has no GPS or sensors. It drives a hardcoded route each time its reset button is pressed.
 - **Tag positions are fixed for indoor demo use** because GPS doesn't work indoors. We program each tag's position with `meshtastic --setlat/--setlon`, and the tags broadcast it over LoRa. If a reported position is missing or falls outside the ranch, the server uses the configured coordinates.
-- In the demo, a **double press of the Cow1 tag's button stands in for the motion sensor** catching head shaking.
+- **Head-shake detection is real on-tag code.** We patched the Meshtastic firmware on the Cow1 tag (`firmware/`) so its QMA6100P accelerometer counts sharp jolts and broadcasts an alert when it sees a head-shake pattern (5 jolts in 2 s). A cardboard cow stands in for the cow. A double press of the tag button still works as a backup trigger and is labeled "tag button" on screen.
 - **Manual backup alerts** (menu → "Simulate alert (backup)") are labeled **MANUAL TRIGGER** on screen. We tell judges if we use it.
 - The demo ranch boundary is a real ~271-acre open pasture in eastern Hillsborough County, FL (near Picnic), picked from satellite imagery. It is not a real customer ranch.
 
@@ -66,6 +66,8 @@ requirements.txt       Python deps
 frontend/              Vite + React + TypeScript + Tailwind + Framer Motion + MapLibre
   src/components/      Dashboard, MapView, FlowPanel, HerdPanel, ResultSheet, CamPage …
 rover/rover.ino        Arduino route sketch
+firmware/              Cow1 tag firmware patch: accelerometer head-shake detection (+ build/flash steps)
+scripts/setup-cow-tag.sh  One-command meshtastic CLI setup for the Cow1 tag
 PRD.md                 One-page product requirements
 .claude/skills/apple-ui/SKILL.md   Design skill the UI follows
 v2smartcar-lesson1/    OSOYOO's Lesson 1 sample sketch (vendor code, used to confirm wiring)
@@ -195,7 +197,7 @@ Rehearsal without spending Gemini calls: start the server with `BULLHORN_FAKE_GE
 
 - [ ] Server running, dashboard shows **LoRa mesh · Online**, Cow1 + Barn Station on the map
 - [ ] Rover phone on `/cam`, camera started, shows "Ready for scan", Auto-Lock Never, phone charged
-- [ ] 1. Double-press Cow1 → red + fly-to + alert card within a few seconds
+- [ ] 1. Shake the cardboard cow (5+ sharp shakes in 2 s) → Base beeps, Cow1 red + fly-to + "Head shaking detected · tag motion sensor" (backup: double-press the tag)
 - [ ] 2. **Locate** → tag beeps
 - [ ] 3. **Dispatch rover** + press Uno reset at the same moment → rover stops at the cow box
 - [ ] 4. **Scan wound** → result sheet in under ~15 s, risk badge shows HIGH on the fake wound
@@ -212,6 +214,8 @@ Rehearsal without spending Gemini calls: start the server with `BULLHORN_FAKE_GE
 
 **Map imagery:** Esri World Imagery raster tiles (`server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer`). Attribution: Esri, Maxar, Earthstar Geographics, and the GIS User Community. Shown on the map.
 
+**Tag firmware:** Meshtastic firmware v2.7.26 (GPL-3.0) with our head-shake patch, built with PlatformIO; QMA6100P Arduino library (via Meshtastic).
+
 **Services/tools:** Google Gemini API (Gemini Flash; `gemini-3.6-flash` with fallback to `gemini-3.8-flash`), Cloudflare quick tunnels (`cloudflared`), Meshtastic firmware on SenseCAP T1000-E, Arduino IDE / Arduino core.
 
 **Vendor sample code:** `v2smartcar-lesson1/` is OSOYOO's Lesson 1 smart-car sketch, kept for wiring reference only. `rover/rover.ino` is our own code.
@@ -220,7 +224,7 @@ Rehearsal without spending Gemini calls: start the server with `BULLHORN_FAKE_GE
 
 ## AI usage (detailed credit)
 
-- **Code generation:** All code in this repo (`server.py`, `frontend/`, `rover/rover.ino`), plus this README, `PRD.md` and the setup steps, was generated during the event by **Claude Code (Anthropic's AI coding assistant, model Claude Opus 5.5)** from our written PRD and project brief. We reviewed it, ran it and iterated on it with the assistant.
+- **Code generation:** All code in this repo (`server.py`, `frontend/`, `rover/rover.ino`, the firmware patch in `firmware/`, `scripts/`), plus this README, `PRD.md` and the setup steps, was generated during the event by **Claude Code (Anthropic's AI coding assistant, model Claude Opus 5.5)** from our written PRD and project brief. We reviewed it, ran it and iterated on it with the assistant.
 - **Design skill:** The `apple-ui` skill (`.claude/skills/apple-ui/SKILL.md`) was written by Claude Code after studying apple.com (homepage, /iphone, /macbook-pro) and the CSS those pages ship (font sizes, letter-spacing, colors, radii, frosted-glass values, easing curves). The dashboard follows it. Inspired-by only.
 - **Ranch location:** Claude Code picked the demo pasture by pulling Esri satellite images of eastern Hillsborough County and checking for open land with no houses. It then computed the boundary coordinates (~271 acres).
 - **Runtime AI:** The app calls **Google Gemini** to triage the rover photo and draft the FDACS report. Its output is labeled triage-only and needs veterinarian confirmation.

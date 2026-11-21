@@ -1,0 +1,121 @@
+diff --git a/src/motion/QMA6100PSensor.cpp b/src/motion/QMA6100PSensor.cpp
+index a04837e..3d0bd6e 100644
+--- a/src/motion/QMA6100PSensor.cpp
++++ b/src/motion/QMA6100PSensor.cpp
+@@ -2,6 +2,100 @@
+ 
+ #if !defined(ARCH_STM32WL) && !MESHTASTIC_EXCLUDE_I2C && defined(HAS_QMA6100P)
+ 
++#include "MeshService.h"
++#include "NodeDB.h"
++#include "Router.h"
++#include <math.h>
++
++// ----------------------------------------------------------------------
++// Bullhorn (HackJam '26): head-shake detection for livestock tags.
++// A cow irritated by a wound shakes its head: a burst of sharp, repeated
++// jolts within ~2 s. Walking/grazing produces slow, smooth changes.
++// We sample the accelerometer every MOTION_SENSOR_CHECK_INTERVAL_MS (50 ms),
++// measure how much the acceleration vector changes between samples
++// (relative to measured gravity, so it is unit-independent), count "jolts",
++// and broadcast a LoRa text alert when enough jolts happen close together.
++// ----------------------------------------------------------------------
++#define SHAKE_JOLT_THRESHOLD 0.55f  // change between samples, as a fraction of 1 g
++#define SHAKE_MIN_JOLT_GAP_MS 90    // one swing = one jolt
++#define SHAKE_WINDOW_MS 2000        // jolts must happen within this window
++#define SHAKE_JOLTS_REQUIRED 5      // jolts in window that count as head shaking
++#define SHAKE_COOLDOWN_MS 12000     // don't spam the mesh
++#define SHAKE_STARTUP_IGNORE_MS 8000
++
++static uint32_t shakeJolts[SHAKE_JOLTS_REQUIRED];
++static uint8_t shakeJoltIdx = 0;
++static uint32_t shakeLastJolt = 0;
++static uint32_t shakeLastAlert = 0;
++static float shakeGravity = 0;
++static float shakePrevX = 0, shakePrevY = 0, shakePrevZ = 0;
++static bool shakeHavePrev = false;
++
++static void bullhornSendShakeAlert()
++{
++    if (!router || !service)
++        return;
++    meshtastic_MeshPacket *p = router->allocForSending();
++    p->to = NODENUM_BROADCAST;
++    p->channel = 0;
++    p->want_ack = false;
++    p->decoded.portnum = meshtastic_PortNum_TEXT_MESSAGE_APP;
++    // "SHAKE" token is what the Bullhorn server looks for; trailing bell makes receiving tags beep.
++    int n = snprintf((char *)p->decoded.payload.bytes, sizeof(p->decoded.payload.bytes), "SHAKE %s: head shaking detected\a",
++                     owner.long_name);
++    if (n < 0)
++        n = 0;
++    if (n > (int)sizeof(p->decoded.payload.bytes))
++        n = sizeof(p->decoded.payload.bytes);
++    p->decoded.payload.size = n;
++    LOG_INFO("Bullhorn: head shake detected, sending alert");
++    service->sendToMesh(p, RX_SRC_LOCAL, true);
++}
++
++static void bullhornCheckShake(QMA6100PSingleton *sensor)
++{
++    outputData a;
++    if (!sensor || !sensor->getAccelData(&a))
++        return;
++    float mag = sqrtf(a.xData * a.xData + a.yData * a.yData + a.zData * a.zData);
++    if (mag <= 0.0f)
++        return;
++    if (shakeGravity <= 0.0f)
++        shakeGravity = mag;
++    shakeGravity = shakeGravity * 0.98f + mag * 0.02f; // slow average ≈ 1 g in sensor units
++
++    uint32_t now = millis();
++    if (!shakeHavePrev) {
++        shakePrevX = a.xData;
++        shakePrevY = a.yData;
++        shakePrevZ = a.zData;
++        shakeHavePrev = true;
++        return;
++    }
++    float dx = a.xData - shakePrevX, dy = a.yData - shakePrevY, dz = a.zData - shakePrevZ;
++    shakePrevX = a.xData;
++    shakePrevY = a.yData;
++    shakePrevZ = a.zData;
++    float jolt = sqrtf(dx * dx + dy * dy + dz * dz) / shakeGravity;
++
++    if (now < SHAKE_STARTUP_IGNORE_MS || now - shakeLastAlert < SHAKE_COOLDOWN_MS)
++        return;
++    if (jolt < SHAKE_JOLT_THRESHOLD || now - shakeLastJolt < SHAKE_MIN_JOLT_GAP_MS)
++        return;
++
++    shakeLastJolt = now;
++    shakeJolts[shakeJoltIdx] = now;
++    shakeJoltIdx = (shakeJoltIdx + 1) % SHAKE_JOLTS_REQUIRED;
++    // The oldest stored jolt is the one we'd overwrite next.
++    uint32_t oldest = shakeJolts[shakeJoltIdx];
++    LOG_DEBUG("Bullhorn: jolt %.2f g", jolt);
++    if (oldest != 0 && now - oldest <= SHAKE_WINDOW_MS) {
++        shakeLastAlert = now;
++        memset(shakeJolts, 0, sizeof(shakeJolts));
++        bullhornSendShakeAlert();
++    }
++}
++
+ // Flag when an interrupt has been detected
+ volatile static bool QMA6100P_IRQ = false;
+ 
+@@ -33,6 +127,7 @@ int32_t QMA6100PSensor::runOnce()
+         QMA6100P_IRQ = false;
+         wakeScreen();
+     }
++    bullhornCheckShake(sensor);
+     return MOTION_SENSOR_CHECK_INTERVAL_MS;
+ }
+ 
+@@ -52,6 +147,7 @@ int32_t QMA6100PSensor::runOnce()
+         // Wake up!
+         wakeScreen();
+     }
++    bullhornCheckShake(sensor);
+     return MOTION_SENSOR_CHECK_INTERVAL_MS;
+ }
+ 

@@ -34,6 +34,7 @@ export interface Alert {
   behavior: string;
   time: number;
   source: "lora" | "manual";
+  trigger?: "motion" | "button" | "manual";
   via: string;
   portnum: string | null;
   lat: number;

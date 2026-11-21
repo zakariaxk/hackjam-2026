@@ -282,7 +282,8 @@ def sync_node_db() -> None:
         print(f"[mesh] node db sync failed: {e}")
 
 
-def raise_alert(source: str, node_id: Optional[str], portnum: Optional[str] = None) -> None:
+def raise_alert(source: str, node_id: Optional[str], portnum: Optional[str] = None, trigger: str = "button") -> None:
+    """source: "lora" | "manual". trigger: "motion" (tag accelerometer), "button" (tag double press), "manual"."""
     global last_alert_at
     now = time.time()
     with lock:
@@ -292,7 +293,8 @@ def raise_alert(source: str, node_id: Optional[str], portnum: Optional[str] = No
             "id": int(now * 1000),
             "node_id": node_id,
             "name": COW_NAME,
-            "behavior": "abnormal behavior",
+            "behavior": "head shaking" if trigger == "motion" else "abnormal behavior",
+            "trigger": trigger if source == "lora" else "manual",
             "time": now,
             "source": source,          # "lora" | "manual"
             "via": "LoRa mesh" if source == "lora" else "Manual backup trigger",
@@ -308,7 +310,7 @@ def raise_alert(source: str, node_id: Optional[str], portnum: Optional[str] = No
         state["has_image"] = False
         state["scan_pending"] = False
         last_alert_at = now
-    print(f"[ALERT] {COW_NAME} abnormal behavior via {alert['via']} at {time.strftime('%H:%M:%S')}")
+    print(f"[ALERT] {COW_NAME} {alert['behavior']} ({alert['trigger']}) via {alert['via']} at {time.strftime('%H:%M:%S')}")
 
 
 def on_receive(packet: dict, interface: Any = None) -> None:  # pubsub callback
@@ -322,7 +324,8 @@ def on_receive(packet: dict, interface: Any = None) -> None:  # pubsub callback
         lat, lon = pos.get("latitude"), pos.get("longitude")
         user = decoded.get("user") or {}
         telem = (decoded.get("telemetry") or {}).get("deviceMetrics") or {}
-        print(f"[mesh] packet from={from_id} port={portnum} lat={lat} lon={lon}")
+        print(f"[mesh] packet from={from_id} port={portnum} lat={lat} lon={lon}"
+              + (f" text={decoded.get('text')!r}" if decoded.get("text") else ""))
 
         if not from_id:
             return
@@ -350,7 +353,10 @@ def on_receive(packet: dict, interface: Any = None) -> None:  # pubsub callback
             elif active or now - last_alert_at < ALERT_DEBOUNCE_S:
                 print("[mesh] Cow1 packet debounced (alert already active)")
             else:
-                raise_alert("lora", from_id, portnum)
+                text = decoded.get("text") or ""
+                # Custom Cow1 firmware broadcasts "SHAKE <name>: head shaking detected" from the accelerometer.
+                trigger = "motion" if portnum == "TEXT_MESSAGE_APP" and "SHAKE" in text else "button"
+                raise_alert("lora", from_id, portnum, trigger)
     except Exception as e:  # noqa: BLE001
         set_error(f"Packet handling failed: {e}")
         traceback.print_exc()
