@@ -184,6 +184,7 @@ export default function FlowPanel({ status, now, busy, onLocate, onDispatch, onS
         </Button>
       </div>
 
+      <RoverLink rover={status.rover} />
       <CameraConnect online={status.camera_online} />
 
       {!status.radio_online && (
@@ -208,6 +209,34 @@ export default function FlowPanel({ status, now, busy, onLocate, onDispatch, onS
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+function RoverLink({ rover }: { rover: Status["rover"] }) {
+  const connected = !!rover?.connected;
+  const label = !rover || rover.state === "offline"
+    ? "Not tethered · press reset on the rover after Dispatch"
+    : rover.state === "connecting"
+      ? "Connecting over USB…"
+      : rover.state === "driving"
+        ? "Driving to Cow1"
+        : rover.state === "arrived"
+          ? "Arrived · ready to scan"
+          : "USB tether · ready to dispatch";
+  return (
+    <div className="mt-3 flex items-center gap-2.5 rounded-[12px] bg-fill px-3.5 py-2.5">
+      <IconRover size={17} className="text-mute" />
+      <div className="min-w-0">
+        <div className="text-[13.5px] font-semibold">Rover</div>
+        <div className="flex items-center gap-1.5 text-[12px] text-mute">
+          <span
+            className="h-2 w-2 shrink-0 rounded-full"
+            style={{ background: connected ? (rover?.state === "driving" ? "#2997ff" : "#30d158") : "#86868b" }}
+          />
+          <span className="truncate">{label}</span>
+        </div>
+      </div>
     </div>
   );
 }

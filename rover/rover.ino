@@ -1,8 +1,17 @@
 /*
  * Bullhorn rover — OSOYOO FlexiRover + OSOYOO Model X driver + Arduino UNO R3
  *
- * What it does: waits 3 seconds, drives one hardcoded route to the "cow" box,
- * then stops. loop() is empty, so EVERY press of the Uno's reset button = one run.
+ * Two ways to start the route:
+ *   A) TETHERED (dispatch from the app): Uno stays plugged into the laptop by USB.
+ *      server.py talks to it over serial. Clicking "Dispatch rover" on the
+ *      dashboard sends 'G' and the rover drives. Use a long USB-B cable.
+ *   B) UNTETHERED (backup): unplug USB, press the Uno's reset button. After
+ *      3.5 s it drives the route once.
+ * On every boot the Uno listens 3.5 s for a 'T' from the server. If it hears one
+ * it waits for 'G' (mode A); if not, it runs the route (mode B).
+ *
+ * Serial protocol (9600 baud), laptop -> Uno: 'T' = tethered hello, 'G' = go, 'S' = stop
+ *                              Uno -> laptop: BOOT, READY, GO, DONE
  *
  * How to use it:
  *   1. Plug the Uno into the laptop (USB-B), Tools > Board > "Arduino Uno",
@@ -77,22 +86,8 @@ void move(int left, int right, unsigned long ms) {
 }
 
 // ---------------- ROUTE ----------------
-void setup() {
-  pinMode(ENA, OUTPUT);
-  pinMode(ENB, OUTPUT);
-  pinMode(IN1, OUTPUT);
-  pinMode(IN2, OUTPUT);
-  pinMode(IN3, OUTPUT);
-  pinMode(IN4, OUTPUT);
-  stopMotors();
-
-  // Built-in LED on while waiting, so you can see it's about to go.
-  pinMode(LED_BUILTIN, OUTPUT);
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(3000);                       // 3 s to step back after pressing reset
-  digitalWrite(LED_BUILTIN, LOW);
-
-  // ---- The route: barn (start mark) -> cow box ----
+void runRoute() {
+  // ---- The route: barn (start mark) -> straight -> right turn -> cow box ----
   // Distance tuning: the number in ms is how long it drives. More ms = farther.
   // At CRUISE=180 on a smooth floor, 1000 ms is roughly 40-60 cm. Measure yours once
   // and scale (e.g. need 1.5x farther -> multiply the ms by 1.5).
@@ -106,6 +101,52 @@ void setup() {
   stopMotors();                      // 4. stop in front of the cow: phone camera faces the box
 }
 
+bool tethered = false;
+const unsigned long LISTEN_MS = 3500;  // also gives you time to step back in untethered mode
+
+void setup() {
+  pinMode(ENA, OUTPUT);
+  pinMode(ENB, OUTPUT);
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+  stopMotors();
+
+  Serial.begin(9600);
+  Serial.println("BOOT");
+
+  // Built-in LED on while listening, so you can see it's about to go.
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+  unsigned long start = millis();
+  while (millis() - start < LISTEN_MS) {
+    if (Serial.available() && Serial.read() == 'T') {
+      tethered = true;
+      break;
+    }
+  }
+  digitalWrite(LED_BUILTIN, LOW);
+
+  if (tethered) {
+    Serial.println("READY");         // wait for 'G' from the dashboard (see loop)
+  } else {
+    runRoute();                      // untethered: reset button = one run
+  }
+}
+
 void loop() {
-  // Intentionally empty: press reset to run the route again.
+  if (!Serial.available()) return;
+  char c = Serial.read();
+  if (c == 'G') {
+    Serial.println("GO");
+    runRoute();
+    Serial.println("DONE");
+  } else if (c == 'T') {
+    tethered = true;
+    Serial.println("READY");
+  } else if (c == 'S') {
+    stopMotors();
+    Serial.println("READY");
+  }
 }

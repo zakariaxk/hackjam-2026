@@ -36,12 +36,12 @@ Built at **HackJam '26 (USF SHPE)**. Tracks: Best Overall, Home Turf, Off the Gr
  └──────────────────────┘
 ```
 
-**Demo flow:** shake the cardboard cow (the Cow1 tag's accelerometer detects head shaking and broadcasts an alert over LoRa; the Base tag beeps) → Cow1 turns red, map flies to it, alert card slides in → **Locate** (tag beeps over LoRa) → **Dispatch rover** (map animation + press the Uno's reset so the real rover drives to the cow) → **Scan wound** (rover phone captures, Gemini triages) → result sheet with risk, confidence, findings, action and a copyable FDACS draft → **Reset**.
+**Demo flow:** shake the cardboard cow (the Cow1 tag's accelerometer detects head shaking and broadcasts an alert over LoRa; the Base tag beeps) → Cow1 turns red, map flies to it, alert card slides in → **Locate** (tag beeps over LoRa) → **Dispatch rover** (the laptop sends GO to the rover's Arduino over a USB tether, so the real rover drives to the cow while the map animates) → **Scan wound** (rover phone captures, Gemini triages) → result sheet with risk, confidence, findings, action and a copyable FDACS draft → **Reset**.
 
 ### Honesty notes (we say these out loud to judges)
 
 - **The ~40-cow herd is simulated.** It's a client-side grazing model, labeled "Simulated" in the legend, the herd panel and on hover, with a toggle to hide it. The optional outbreak scenario only flags simulated cows.
-- **The rover dispatch animation on the map is a visualization.** The real rover has no GPS or sensors. It drives a hardcoded route each time its reset button is pressed.
+- **The rover dispatch animation on the map is a visualization.** The real rover has no GPS or sensors and drives a hardcoded route. The Uno has no wireless, so **Dispatch rover** reaches it over a **USB tether** to the laptop (it drives when the dashboard sends GO). Untethered backup: press the Uno's reset button.
 - **Tag positions are fixed for indoor demo use** because GPS doesn't work indoors. We program each tag's position with `meshtastic --setlat/--setlon`, and the tags broadcast it over LoRa. If a reported position is missing or falls outside the ranch, the server uses the configured coordinates.
 - **Head-shake detection is real on-tag code.** We patched the Meshtastic firmware on the Cow1 tag (`firmware/`) so its QMA6100P accelerometer counts sharp jolts and broadcasts an alert when it sees a head-shake pattern (5 jolts in 2 s). A cardboard cow stands in for the cow. A double press of the tag button still works as a backup trigger and is labeled "tag button" on screen.
 - **Manual backup alerts** (menu → "Simulate alert (backup)") are labeled **MANUAL TRIGGER** on screen. We tell judges if we use it.
@@ -186,8 +186,10 @@ Rehearsal without spending Gemini calls: start the server with `BULLHORN_FAKE_GE
 
 1. Install **Arduino IDE 2** from arduino.cc/en/software. Plug the Uno in with the USB-B cable. Pick Tools › Board › **Arduino Uno**, then Tools › Port › the new `/dev/cu.usbserial…` or `/dev/cu.wchusbserial…` port.
    No new port? The clone uses a CH340 USB chip. Install the driver from https://www.wch-ic.com/downloads/CH34XSER_MAC_ZIP.html, then replug.
-2. Open `rover/rover.ino`. The pins are already set to match the existing OSOYOO wiring (ENA 9, IN1 12, IN2 11, IN3 7, IN4 8, ENB 6). Change them only if your jumpers differ. Click **Upload**, then unplug USB, switch the battery ON, and press the Uno's **reset** button. After 3 seconds it drives.
-3. Tune on the actual demo floor until it stops in front of the cow box:
+2. Open `rover/rover.ino`. The pins are already set to match the existing OSOYOO wiring (ENA 9, IN1 12, IN2 11, IN3 7, IN4 8, ENB 6). Change them only if your jumpers differ. Click **Upload**.
+3. **Dispatch from the app (tethered):** close the Arduino IDE's Serial Monitor, leave the Uno plugged into the laptop (use the longest USB-B cable you have, with slack so it can follow the rover), switch the battery ON, and start/restart the server. The dashboard's **Rover** row should say "USB tether · ready to dispatch". Clicking **Dispatch rover** drives it.
+   **Untethered backup:** unplug USB, switch the battery ON, press the Uno's **reset** button. After 3.5 seconds it drives.
+4. Tune on the actual demo floor until it stops in front of the cow box:
    - One side spins backward → set `LEFT_REVERSED` or `RIGHT_REVERSED` to `true`.
    - Curves when it should go straight → lower the stronger side's trim (`LEFT_TRIM = 0.92`).
    - Too short or too far → change the ms numbers in `move(...)`. Turn not ~90° → change the turn ms.
@@ -199,7 +201,7 @@ Rehearsal without spending Gemini calls: start the server with `BULLHORN_FAKE_GE
 - [ ] Rover phone on `/cam`, camera started, shows "Ready for scan", Auto-Lock Never, phone charged
 - [ ] 1. Shake the cardboard cow (5+ sharp shakes in 2 s) → Base beeps, Cow1 red + fly-to + "Head shaking detected · tag motion sensor" (backup: double-press the tag)
 - [ ] 2. **Locate** → tag beeps
-- [ ] 3. **Dispatch rover** + press Uno reset at the same moment → rover stops at the cow box
+- [ ] 3. **Dispatch rover** → (tethered) rover drives by itself and stops at the cow box; Rover row shows Driving → Arrived
 - [ ] 4. **Scan wound** → result sheet in under ~15 s, risk badge shows HIGH on the fake wound
 - [ ] 5. **Copy** the FDACS draft
 - [ ] 6. **Reset**, put the rover back on its start mark

@@ -40,6 +40,12 @@ COW_NAME = "Cow1"
 
 # Optional: force a serial port, e.g. "/dev/cu.usbmodem1101" or "COM5".
 MESH_PORT = os.environ.get("MESH_PORT") or None
+# Optional: force the rover (Arduino Uno) serial port, e.g. "/dev/cu.usbserial-1120".
+ROVER_PORT = os.environ.get("ROVER_PORT") or None
+
+# USB vendor IDs used to tell the two kinds of USB devices apart.
+TAG_VIDS = {0x239A, 0x2886}                  # T1000-E (Adafruit nRF52 bootloader / Seeed)
+ROVER_VIDS = {0x1A86, 0x2341, 0x2A03, 0x0403, 0x10C4}  # CH340 clone, Arduino, FTDI, CP210x
 
 ALERT_DEBOUNCE_S = 10        # ignore repeat Cow1 packets within this window
 STARTUP_GRACE_S = 12         # ignore Cow1 packets right after the radio connects (node DB sync chatter)
@@ -145,6 +151,7 @@ state: dict[str, Any] = {
     "image_version": 0,
     "last_error": None,
     "flow": _fresh_flow(),
+    "rover": {"connected": False, "state": "offline", "port": None},
 }
 
 radio: Any = None
@@ -388,7 +395,7 @@ def radio_thread() -> None:
     while True:
         if radio is None:
             try:
-                ports = [MESH_PORT] if MESH_PORT else meshtastic.util.findPorts(True)
+                ports = [MESH_PORT] if MESH_PORT else find_tag_ports()
                 if not ports:
                     if not announced_missing:
                         print("[mesh] no Base tag found on USB — running without radio (will keep checking)")
@@ -424,6 +431,125 @@ def radio_thread() -> None:
         else:
             sync_node_db()
         time.sleep(5)
+
+
+def _usb_ports() -> list[Any]:
+    try:
+        import serial.tools.list_ports
+        return [p for p in serial.tools.list_ports.comports() if p.vid is not None]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def find_tag_ports() -> list[str]:
+    """Meshtastic tag ports only (never the rover's Uno, whose CH340 chip Meshtastic would also accept)."""
+    ports = _usb_ports()
+    tags = [p.device for p in ports if p.vid in TAG_VIDS and p.device != ROVER_PORT]
+    if not tags:
+        tags = [p.device for p in ports if p.vid not in ROVER_VIDS and "usbmodem" in p.device and p.device != ROVER_PORT]
+    return sorted(tags)
+
+
+def find_rover_port() -> Optional[str]:
+    if ROVER_PORT:
+        return ROVER_PORT
+    for p in _usb_ports():
+        if p.vid in ROVER_VIDS and p.device != MESH_PORT:
+            return p.device
+    return None
+
+
+# ---------------------------------------------------------------------------
+# ROVER (Arduino Uno over a USB tether — the Uno has no wireless)
+# ---------------------------------------------------------------------------
+
+rover_serial: Any = None
+rover_lock = threading.Lock()
+
+
+def rover_send(cmd: bytes) -> bool:
+    with rover_lock:
+        if rover_serial is None:
+            return False
+        try:
+            rover_serial.write(cmd)
+            rover_serial.flush()
+            return True
+        except Exception as e:  # noqa: BLE001
+            print(f"[rover] write failed: {e}")
+            return False
+
+
+def rover_thread() -> None:
+    """Keep a serial link to the rover's Uno. Opening the port resets the Uno; we then
+    send 'T' so it waits for our 'G' instead of driving off on its own."""
+    global rover_serial
+    try:
+        import serial
+    except Exception:  # noqa: BLE001
+        return
+    announced = False
+    while True:
+        port = find_rover_port()
+        if not port:
+            if not announced:
+                print("[rover] no Uno on USB — dispatch is map-only; press the rover's reset button to drive")
+                announced = True
+            time.sleep(3)
+            continue
+        announced = False
+        try:
+            print(f"[rover] connecting to Uno on {port} ...")
+            ser = serial.Serial(port, 9600, timeout=0.2)
+            with lock:
+                state["rover"] = {"connected": False, "state": "connecting", "port": port}
+            time.sleep(1.8)                       # Uno reboots when the port opens; skip its bootloader
+            ser.reset_input_buffer()
+            with rover_lock:
+                rover_serial = ser
+            hello_until = time.time() + 4.0
+            buf = b""
+            while True:
+                if hello_until and time.time() < hello_until:
+                    rover_send(b"T")
+                elif hello_until:
+                    hello_until = 0
+                    with lock:
+                        if not state["rover"]["connected"]:
+                            print("[rover] Uno didn't answer — is rover.ino uploaded?")
+                chunk = ser.read(64)
+                if chunk:
+                    buf += chunk
+                    while b"\n" in buf:
+                        line, buf = buf.split(b"\n", 1)
+                        msg = line.decode(errors="ignore").strip()
+                        if not msg:
+                            continue
+                        print(f"[rover] {msg}")
+                        with lock:
+                            r = state["rover"]
+                            if msg == "BOOT":           # someone pressed reset: claim it again
+                                r.update(connected=False, state="connecting")
+                                hello_until = time.time() + 3.0
+                            elif msg == "READY":
+                                r.update(connected=True, state="ready")
+                                hello_until = 0
+                            elif msg == "GO":
+                                r.update(connected=True, state="driving")
+                            elif msg == "DONE":
+                                r.update(connected=True, state="arrived")
+        except Exception as e:  # noqa: BLE001
+            print(f"[rover] link lost: {e}")
+        with rover_lock:
+            try:
+                if rover_serial is not None:
+                    rover_serial.close()
+            except Exception:  # noqa: BLE001
+                pass
+            rover_serial = None
+        with lock:
+            state["rover"] = {"connected": False, "state": "offline", "port": None}
+        time.sleep(3)
 
 
 # ---------------------------------------------------------------------------
@@ -514,6 +640,7 @@ app = FastAPI(title="Bullhorn")
 @app.on_event("startup")
 def _startup() -> None:
     threading.Thread(target=radio_thread, daemon=True).start()
+    threading.Thread(target=rover_thread, daemon=True).start()
     if LAST_JPG.exists():
         LAST_JPG.unlink()
     key = "set" if os.environ.get("GEMINI_API_KEY") else "MISSING"
@@ -564,6 +691,7 @@ def api_status() -> dict[str, Any]:
             "last_error": state["last_error"],
             "flow": state["flow"],
             "camera_online": camera_online(),
+            "rover": dict(state["rover"]),
             "gemini_key": bool(os.environ.get("GEMINI_API_KEY")),
             "server_time": time.time(),
         }
@@ -667,8 +795,10 @@ def api_ping_cow() -> JSONResponse:
 def api_dispatch() -> dict[str, Any]:
     with lock:
         state["flow"]["dispatched_at"] = time.time()
-    print("[rover] dispatch (press the Uno reset button now)")
-    return {"ok": True}
+        connected = state["rover"]["connected"]
+    sent = connected and rover_send(b"G")
+    print("[rover] dispatch: sent GO over USB" if sent else "[rover] dispatch: no tether — press the Uno reset button now")
+    return {"ok": True, "rover": "sent" if sent else "manual"}
 
 
 @app.post("/api/simulate-alert")

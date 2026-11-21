@@ -75,6 +75,7 @@ export interface Status {
   last_error: string | null;
   flow: Flow;
   camera_online: boolean;
+  rover?: { connected: boolean; state: "offline" | "connecting" | "ready" | "driving" | "arrived"; port: string | null };
   gemini_key: boolean;
   server_time: number;
 }
