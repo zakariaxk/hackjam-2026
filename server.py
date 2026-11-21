@@ -147,6 +147,9 @@ state: dict[str, Any] = {
 
 radio: Any = None
 radio_connected_at = 0.0
+camera_last_seen = 0.0       # last time the rover phone's /cam page polled us
+CAMERA_ONLINE_S = 5          # /cam polls every 1 s; silent this long = disconnected
+SCAN_TIMEOUT_S = 15          # give up on a scan the camera never picked up
 last_alert_at = 0.0
 last_ping_at = 0.0
 resolved_cow_id: Optional[str] = None
@@ -510,9 +513,20 @@ def _startup() -> None:
     print(f"[bullhorn] GEMINI_API_KEY {key} · frontend/dist {dist}")
 
 
+def camera_online() -> bool:
+    return time.time() - camera_last_seen < CAMERA_ONLINE_S
+
+
 @app.get("/api/status")
 def api_status() -> dict[str, Any]:
     with lock:
+        req = state["flow"]["scan_requested_at"]
+        if state["scan_pending"] and req and time.time() - req > SCAN_TIMEOUT_S:
+            state["scan_pending"] = False
+            state["last_error"] = (
+                "The rover camera didn't take the photo. On the rover phone, open the dashboard "
+                "link + /cam (or scan the QR under Rover camera) and tap Start camera."
+            )
         nodes = [v for v in (node_view(n) for n in state["nodes"].values()) if v]
         roles_present = {n["role"] for n in nodes}
         # Always show both live tags at their configured spots, even before first contact.
@@ -541,6 +555,7 @@ def api_status() -> dict[str, Any]:
             "image_version": state["image_version"],
             "last_error": state["last_error"],
             "flow": state["flow"],
+            "camera_online": camera_online(),
             "gemini_key": bool(os.environ.get("GEMINI_API_KEY")),
             "server_time": time.time(),
         }
@@ -552,18 +567,25 @@ def api_config() -> dict[str, Any]:
 
 
 @app.post("/api/request-scan")
-def api_request_scan() -> dict[str, Any]:
+def api_request_scan() -> JSONResponse:
+    if not camera_online():
+        msg = ("Rover camera not connected. On the rover phone, open the dashboard link + /cam "
+               "(or scan the QR under Rover camera) and tap Start camera.")
+        set_error(msg)
+        return JSONResponse({"ok": False, "error": "camera offline"}, status_code=409)
     with lock:
         state["scan_pending"] = True
         state["result"] = None
         state["flow"]["scan_requested_at"] = time.time()
         state["last_error"] = None
-    return {"ok": True}
+    return JSONResponse({"ok": True})
 
 
 @app.get("/api/should-scan")
 def api_should_scan() -> dict[str, bool]:
+    global camera_last_seen
     with lock:
+        camera_last_seen = time.time()
         pending = state["scan_pending"]
         state["scan_pending"] = False
     return {"scan": pending}

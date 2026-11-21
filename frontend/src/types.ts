@@ -73,6 +73,7 @@ export interface Status {
   image_version: number;
   last_error: string | null;
   flow: Flow;
+  camera_online: boolean;
   gemini_key: boolean;
   server_time: number;
 }

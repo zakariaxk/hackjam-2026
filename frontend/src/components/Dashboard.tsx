@@ -55,7 +55,7 @@ export default function Dashboard() {
     setLocalError(null);
     const r = await post(path);
     setBusy(null);
-    if (!r.ok && r.error && !["radio offline", "cow id unknown"].includes(r.error)) setLocalError(r.error);
+    if (!r.ok && r.error && !["radio offline", "cow id unknown", "camera offline"].includes(r.error)) setLocalError(r.error);
   };
 
   const toggleOutbreak = (on: boolean) => {

@@ -4,6 +4,7 @@ import { formatTime } from "../api";
 import { Button, Spinner, enter, spring } from "./ui";
 import { IconBell, IconCamera, IconChevron, IconReset, IconRover } from "./Icons";
 import { ROVER_TRIP_S } from "./MapView";
+import CameraConnect from "./CameraConnect";
 
 interface Props {
   status: Status;
@@ -122,7 +123,7 @@ export default function FlowPanel({ status, now, busy, onLocate, onDispatch, onS
               key="wait"
               icon={<Spinner />}
               title="Waiting for rover camera"
-              sub={waitedLong ? "Is /cam open on the rover phone with the camera started?" : "Capturing frame…"}
+              sub={waitedLong ? "Still waiting. Is the rover phone awake on the camera page?" : "Taking the photo on the rover phone…"}
             />
           ) : flow.dispatched_at && !done[3] ? (
             <StateLine
@@ -176,6 +177,8 @@ export default function FlowPanel({ status, now, busy, onLocate, onDispatch, onS
           Reset
         </Button>
       </div>
+
+      <CameraConnect online={status.camera_online} />
 
       {!status.radio_online && (
         <p className="mt-3 text-[12px] leading-snug text-faint">
