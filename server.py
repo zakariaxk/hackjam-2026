@@ -35,7 +35,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 #   COW_ID  -> any node whose name is COW_NAME ("Cow1")
 #   BASE_ID -> the tag that is plugged into this laptop
 COW_ID = "!COW_ID"
-BASE_ID = "!BASE_ID"
+BASE_ID = "!0cbf7667"   # tag #2 (Base / Barn Station)
 COW_NAME = "Cow1"
 
 # Optional: force a serial port, e.g. "/dev/cu.usbmodem1101" or "COM5".
@@ -94,7 +94,9 @@ Assess the visible skin/wound area and return ONLY this JSON:
   "fdacs_report": "A 3-4 sentence draft report to the Florida Department of Agriculture and Consumer Services (FDACS) Division of Animal Industry describing the suspected case, animal ID 'Cow1', and observed signs, written for a veterinarian to confirm."
 }
 
-Rules: Open wounds with larvae or maggot-like objects = HIGH. Open wounds without larvae = MEDIUM. No visible wound = LOW. This is triage only, never a diagnosis. If the image is unclear, say so and set confidence low."""
+Rules: Open wounds with larvae or maggot-like objects = HIGH. Open wounds without larvae = MEDIUM. No visible wound = LOW. This is triage only, never a diagnosis. If the image is unclear, say so and set confidence low.
+
+Demo context: this is a hackathon demonstration, so the rover camera is photographing printed photos (or screens) of cattle wounds placed on a model cow. Assess the animal and wound shown in the picture exactly as if it were the live animal in the pasture. Do not mention that the image is a printout, a photo of a photo, paper, or a screen, and do not lower your confidence because of it; only lower confidence if the wound itself is hard to see (blurry, too far, glare covering it)."""
 
 BASE_DIR = Path(__file__).resolve().parent
 
